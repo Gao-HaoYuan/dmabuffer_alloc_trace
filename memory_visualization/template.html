@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Pool Visulization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        /* 加载 */
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+        .loading {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+        }
+        /* 下拉框 */
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        #dropdownBtn {
+            background-color: #3498db;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px; /* 圆角 */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: background-color 0.3s ease; /* 过渡效果 */
+        }
+        #dropdownBtn:hover {
+            background-color: #2c85c7; /* 悬停时的颜色 */
+        }
+        .myPopup {
+            display: none;
+            position: absolute;
+            top: 50px;
+            left: 50%;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            width: 500px;
+        }
+        .myPopup p {
+            margin: 0 0 15px 0;
+        }
+        .myPopup ul {
+            list-style-type: disc;
+            padding-left: 20px;
+        }
+        #closeBtn {
+            background-color: #e74c3c;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            margin-top: 10px;
+            border-radius: 5px; /* 圆角 */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: background-color 0.3s ease; /* 过渡效果 */
+        }
+        #closeBtn:hover {
+            background-color: #c9302c; /* 悬停时的颜色 */
+        }
+        /* tooltip */
+        .bar-tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+            z-index: 999;
+        }
+        /* 内存池的样式 */
+        .center-container {
+            margin-top: 3%;
+            display: flex;
+            justify-content: center;
+            align-items: start;
+        }
+        .chart-title {
+            position: absolute;
+            top: 0;
+            left: 50%; /* Horizontally center the title */
+        }
+        .chart-container {
+            display: flex;
+            overflow-x: auto;
+            white-space: nowrap;
+            width: 80%; /* 设置为100%以填充其父容器的宽度 */
+        }
+        .chart {
+            margin-right: 10px; /* Adjust the right margin to control spacing */
+        }
+        .max-fragment {
+            position: absolute;
+            display: none; /* 初始状态隐藏 */
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            text-align: center;
+            white-space: nowrap;
+            z-index: 999;
+        }
+
+        /* 直方图的样式 */
+        .bar-title {
+            position: absolute;
+            top: 850px;
+            left: 50%; /* Horizontally center the title */
+            margin-top: 30px;
+        }
+        .scrollable-content {
+            margin-top: 5%;
+            margin-bottom: 60px;
+            display: flex;
+            justify-content: center;
+            align-items: start;
+        }
+        .svg-container {
+            display: flex;
+            white-space: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            width: 60%;
+        }
+        .bar {
+            margin-right: 10px; /* Adjust the right margin to control spacing */
+        }
+        /* 放大镜的样式 */
+        .zoom-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #zoomedRects {
+            position: fixed;
+            top: 45%;
+            left: 10%;
+            width: 80%;
+            height: 50px;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            z-index: 777;
+            padding: 10px;
+            text-align: center;
+            font-family: Arial, sans-serif;
+            overflow-x: auto;
+            display: flex;
+            white-space: nowrap;
+        }
+        .input-box {
+            position: fixed;
+            top: 40%;
+            left: 35%;
+            width: 20%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+            margin-right: 10px; /* 调整输入框与按钮之间的间距 */
+        }
+        #closeButton {
+            position: fixed;
+            top: 39.7%;
+            left: 57%;
+            background-color: #0074d9;
+            color: white;
+            padding: 10px 20px; /* Increase the padding for a larger button */
+            border: none;
+            border-radius: 5px;
+            margin-left: 10px; /* Control the spacing between the button and #zoomedRects */
+            font-size: 16px; /* Increase the font size for larger text */
+        }
+		.line-container {
+			position: fixed;
+			top: 57%;
+            left: 30%;
+			display: flex;
+			align-items: center;
+		}
+		.line {
+			width: 600px;
+			height: 4px;
+			background-color: #db4d34d5;
+			border-radius: 2px;
+			box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+		}
+		.label {
+			margin: 0 10px;
+			color: #333;
+			font-weight: bold;
+		}
+    </style>
+</head>
+<body>
+<!-- 加载.. -->
+<div class="loading-container" id="loading-container">
+    <div class="loading"></div>
+    <p>Loading...</p>
+</div>
+
+<div class="content" id="content" style="display: none;">	
+    <!-- 下拉框 -->
+    <div class="dropdown">
+        <button id="dropdownBtn"> Tips </button>
+        <div id="myPopup" class="myPopup"> <!-- 更新名称为myPopup -->
+            <p>使用技巧:</p>
+            <ul>
+                <li>绿色代表空闲内存块, 蓝色代表已分配的内存块</li>
+                <li>当鼠标悬停在内存块上时, 显示内存块信息</li>
+                <li>鼠标右击内存块, 显示堆栈信息</li>
+                <li>鼠标悬停在“内存池状态时序图”上时, 显示内存池内部碎片最大时的值</li>
+                <li>CTRL + 鼠标左键点击第一幅图的柱形元素, 查看内存池放大图</li>
+				<li>鼠标左键点击第一幅图的柱形元素, 标识出该内存块生命周期</li>
+                <li>鼠标左键点击第二幅图的柱形元素, 在第一幅图中标识出该内存块生命周期</li>
+            </ul>
+            <p>常见问题:</p>
+            <ul>
+                <li>堆栈展开时没有符号, 只有地址</li>
+                    <ol>                    
+                        <li> 用带符号表的文件进行抓 trace</li>
+                        <li> 如果用 strip 后的库的话， 编译时请去掉 --version-script </li>
+                    </ol>
+            </ul>
+            <button id="closeBtn">关闭</button>
+        </div>
+    </div>
+
+    <!-- tooltip -->
+    <div class="bar-tooltip" id="tooltip"></div>
+
+    <!-- 内存池 -->
+    <div class="center-container">
+        <div class="chart-title">
+            <h4 onmouseover="showMaxFragment()" onmouseout="hideMaxFragment()">内存池状态时序图</h4>
+            <span id="maxFragment" class="max-fragment"></span>
+        </div>
+        <div class="y-axis-container">
+            <svg width="100" height="720"><g class="y-axis"></g></svg>
+        </div>
+        <div class="chart-container" id="charts-container"></div>
+    </div>
+
+    <!-- 直方图 -->
+    <div class="scrollable-content" id="scrollable-content">
+        <div class="bar-title"><h4>内存块存在时间</h4></div>
+        <div class="y-axis-content">
+            <svg width="90" height="600"><g class="y-axis"></g></svg>
+        </div>
+        <div class="svg-container" id="svg-container"></div>
+    </div>
+
+    <!-- 放大镜 -->
+    <div class="zoom-container">
+        <button id="closeButton" style="display: none;">Close</button>
+        <input type="text" id="dataInput" placeholder="输入放大比例, 请按 Enter 确认数据" class="input-box" style="display: none;">
+        <div id="zoomedRects" style="display: none;"></div>
+		<div id="line-container" class="line-container" style="display: none;">
+			<div class="label">低地址</div>
+			<div class="line"></div>
+			<div class="label">高地址</div>
+		</div>
+    </div>
+</div>
+    
+<script>
+	var tooltip;
+	var start;
+	var rectCount; // 用于跟踪绘制的矩形数量
+	var rectElement;
+	var lastElement = null;
+	var originColor;
+
+	function createZoom(){
+		rectElement.style("border-top", "3px dashed red");
+		var inputValue = parseFloat(d3.select("#dataInput").node().value) || 3000;
+		var svgWidth = inputValue;
+		// 清空 <div> 容器
+		d3.select("#zoomedRects").selectAll("*").remove();
+		// 显示组件
+		d3.select("#zoomedRects").style("display", "block");
+		d3.select("#updateButton").style("display", "block");
+		d3.select("#dataInput").style("display", "block");
+		d3.select("#line-container").style("display", "flex block");
+		d3.select("#closeButton").style("display", "block")
+			.on("click", function() {
+				// 隐藏 <div> 容器并移除其内容
+				d3.select("#zoomedRects").style("display", "none");
+				d3.select("#dataInput").style("display", "none");
+				d3.select("#closeButton").style("display", "none")
+				d3.select("#updateButton").style("display", "none");
+				d3.select("#line-container").style("display", "none");
+				rectElement.style("border-top", "none");
+				rectElement = null;
+			});
+		var rectsInSvg = rectElement.selectAll("rect");
+		var svgContainer = d3.select("#zoomedRects").append("svg")
+			.attr("width", svgWidth)
+			.attr("height", 30)
+			.style("display", "block");
+		// 创建一个线性比例尺，用于调整<rect>的宽度
+		var totalSize = d3.sum(rectsInSvg.data(), function(d) { return d.Size; });
+		var xScale = d3.scaleLinear()
+			.domain([0, totalSize]) // 根据数据的宽度范围
+			.range([0, svgWidth]); // 调整的宽度范围，根据需求修改
+		var currentX = svgWidth;
+		rectsInSvg.each(function(d) {
+			// 使用D3选择集来选择当前的rect元素
+			var currentFill = d3.select(this).style("fill");
+			currentX -= xScale(d.Size);
+			var bar = svgContainer.selectAll(".rect2")
+				.data([d])
+				.enter()
+				.append("rect")
+				.attr("class", "rect1")
+				.attr("x", 0)
+				.attr("y", 10)
+				.attr("width", xScale(d.Size))
+				.attr("height", 30)
+				.style("fill", currentFill)
+				.attr("transform", "translate(" + currentX + ", 0)")
+				.on("mouseover", createTooltip)
+				.on("mouseout", function () {
+					tooltip.style("display", "none");
+				})
+			currentX -= 3; 
+		});
+	}
+
+	// Add a dedicated "Enter" key press event listener
+	d3.select("#dataInput").on("keydown", function (event) {
+		if (event.key === "Enter") {
+			createZoom();
+		}
+	});
+
+	// Function to update a chart with new data
+	function updateChart(data, container, time) {
+		const yScale = d3.scaleLinear()
+			.domain([0, d3.sum(data, d => d.Size)])
+			.range([0, 700]);
+
+		const svg = container.append("svg")
+			.attr("width", 30)
+			.attr("height", 770);
+
+		var currentY = 0;
+		const rects = svg.selectAll(".rect1")
+			.data(data.reverse())
+			.enter()
+			.append("rect")
+			.attr("class", "rect1")
+			.attr("x", 0)
+			.attr("y", d => {
+				const y = currentY;
+				currentY += yScale(d.Size);
+				return y;
+			})
+			.attr("width", 30)
+			.attr("height", d => yScale(d.Size))
+			.attr("fill", d => d.Color)
+			.on("mouseover", createTooltip)
+			.on("mouseout", function () {
+				tooltip.style("display", "none");
+			})
+			.on("click", function(event){
+				if (event.ctrlKey) {
+					if (rectElement) {
+						rectElement.style("border-top", "none");
+					}
+					rectElement = d3.select(this.parentNode);
+					createZoom();
+				}
+				else{
+					if(lastElement){
+						alert("请关闭backtrace窗口!!");
+					}
+					else{
+						// 获取被点击元素的数据，包括name和address
+						var clickedData = d3.select(this).data()[0];
+						var clickedName = clickedData.Name;
+						var clickedAddress = clickedData.Address;
+						var currentFill = d3.select(this).style("fill");
+						
+						if(currentFill === "lightgreen" || currentFill === "rgb(144, 238, 144)"){
+							alert("无法查看空闲块生命周期!!");
+						}
+						else{
+							// 遍历bar-rect元素
+							d3.selectAll(".rect1")
+								.each(function () {
+									var rectData = d3.select(this).data()[0];
+									// 检查bar-rect元素的name和address是否与点击的data-bar匹配
+									if (rectData.Name === clickedName && rectData.Address === clickedAddress) {
+										// 获取当前的fill颜色
+										var currentFill = d3.select(this).style("fill");
+										if (currentFill === "purple" || currentFill === "rgb(128, 0, 128)") {
+											d3.select(this).style("fill", rectData.Color);
+										} else {
+											d3.select(this).style("fill", "purple");
+										}
+									}
+								});
+						}
+					}
+				}
+			});
+
+		// 添加文本到rects2，每间隔五次才显示文本
+		const timeInMilliseconds = ((time - start) / 1000).toFixed(1); // 保留一位小数，四舍五入
+		const text2 = svg.append("text")
+			.attr("x", 15) // 调整文本的水平位置
+			.attr("y", 740) // 调整文本的垂直位置
+			.attr("text-anchor", "middle") // 文本居中对齐
+			.attr("fill", "black") // 文本颜色
+			.text(timeInMilliseconds + " ms") // 设置文本内容
+			.attr("transform", "rotate(-75 15 740)") // 旋转文本为45度  // 10 600 对应于x y
+			.style("font-style", "italic") // 设置字体为斜体
+			.style("font-size", "10px"); // 设置字体大小为12像素
+	}
+
+	function updateBar(data, container, yScale){
+		const svg = container.append("svg")
+			.attr("width", 30)
+			.attr("height", 670);
+
+		const arrayOfObjects = [data];
+		const dataBars = svg.selectAll(".data-bar")
+			.data(arrayOfObjects)
+			.enter()
+			.append("rect")
+			.attr("class", "data-bar")
+			.attr("x", 0)
+			.attr("y", d => yScale(d.Duration))
+			.attr("width", 30)
+			.attr("height", d => 600 - yScale(d.Duration))
+			.attr("fill", d => d.Color)
+			.on("mouseover", createTooltip)
+			.on("mouseout", function () {
+				tooltip.style("display", "none");
+			})
+			.on("click", function () {
+				if(lastElement){
+					alert("请关闭backtrace窗口!!");
+				}
+				else{
+					// 获取被点击元素的数据，包括name和address
+					var clickedData = d3.select(this).data()[0];
+					var clickedName = clickedData.Name;
+					var clickedAddress = clickedData.Address;
+					var currentFill = d3.select(this).style("fill");
+					// 检查颜色是否已经是lavender，如果是，将其设置为lightblue，否则设置为lavender
+					if (currentFill === "purple" || currentFill === "rgb(128, 0, 128)") {
+						d3.select(this).style("fill", "lightblue");
+					} else {
+						d3.select(this).style("fill", "purple");
+					}
+					// 遍历bar-rect元素
+					d3.selectAll(".rect1")
+						.each(function () {
+							var rectData = d3.select(this).data()[0];
+							// 检查bar-rect元素的name和address是否与点击的data-bar匹配
+							if (rectData.Name === clickedName && rectData.Address === clickedAddress) {
+								// 获取当前的fill颜色
+								var currentFill = d3.select(this).style("fill");
+								if (currentFill === "purple" || currentFill === "rgb(128, 0, 128)") {
+									d3.select(this).style("fill", rectData.Color);
+								} else {
+									d3.select(this).style("fill", "purple");
+								}
+							}
+						});
+				}
+			});
+
+		const text2 = svg.selectAll(".text-label")
+			.data(arrayOfObjects)
+			.enter()
+			.append("text")
+			.attr("x", 15) // 根据rects2的位置来设置x
+			.attr("y", 640) // 根据rects2的位置来设置y
+			.attr("text-anchor", "middle")
+			.attr("fill", "black")
+			.text(d => (d.Size / 1024).toFixed(1) + "KB")
+			.attr("width", 20)
+			.attr("height", 70)
+			.attr("transform", "rotate(-75 15 640)") // 10 600 对应于x y
+			.style("font-style", "italic")
+			.style("font-size", "10px");
+
+		// 检查计数器，每五次显示文本
+		if (rectCount % 5 === 0) {
+			text2.style("display", "block");
+		} else {
+			text2.style("display", "none");
+		}
+
+		// 增加计数器
+		rectCount++;
+	}
+
+	// 渲染直方图函数
+	function renderChart(data) {
+		const mergedData = data.flatMap(dataset => dataset.data.filter(item => item.Duration > 9000));
+		mergedData.sort((a, b) => b.Size - a.Size);
+
+		const yScale = d3.scaleLinear()
+			.domain([0, d3.max(mergedData, d => d.Duration)])
+			.range([600, 0]);
+		
+		const yAxis = d3.axisLeft(yScale)
+			.ticks(10)
+			.tickFormat(d => (d / 1000).toFixed(1) + "ms"); // 将刻度格式化为毫秒
+
+		const yAxisGroup = d3.select('.y-axis-content .y-axis')
+			.call(yAxis)
+			.attr('transform', `translate(20, -4)`);
+
+		yAxisGroup.selectAll("text")
+			.attr("x", 50)
+			
+		rectCount = 0; // 归0
+		mergedData.forEach((data, index) => {
+				const container = d3.select("#svg-container")
+					.append("div")
+					.attr("class", "bar")
+					.attr("id", "bar-" + index);
+					updateBar(data, container, yScale);
+			});
+	}
+
+	tooltip = d3.select("#tooltip");
+	// Function to show maxFragment content
+	function showMaxFragment() {
+		const maxFragmentElement = document.getElementById("maxFragment");
+		maxFragmentElement.style.display = "block";
+	}
+
+	// Function to hide maxFragment content
+	function hideMaxFragment() {
+		const maxFragmentElement = document.getElementById("maxFragment");
+		maxFragmentElement.style.display = "none";
+	}
+
+	function createTooltip () {
+		const d = d3.select(this).data()[0];
+		const mouseX = event.clientX;
+		const mouseY = event.clientY + window.scrollY;
+		
+		// 计算tooltip的位置，使其在鼠标上方的正中央
+		let tooltipX = mouseX + 5;
+		let tooltipY = mouseY - 50; // 向上偏移以避免覆盖鼠标
+
+		var tooltipContent = "<strong>Address:</strong> " + d.Address + "<br><strong>Size:</strong> " + (d.Size / 1024).toFixed(1) + "KB" + "<br><strong>Use:</strong> " + (d.Use / 1024).toFixed(1) + "KB"; 
+		if(d.Duration > 0){
+			tooltipContent += "<br><strong>Duration:</strong> " + d.Duration;
+		}
+		tooltip.style("left", tooltipX + "px");
+		tooltip.style("top", tooltipY + "px");
+		tooltip.style("display", "block");
+		tooltip.html(tooltipContent);
+	}
+
+	function createPopupWindow(x, y, d) {
+		const width = 400; // 子窗口的宽度
+		const height = 300; // 子窗口的高度
+		const left = x - width; // 子窗口左上角的横坐标
+		const top = y - height; // 子窗口左上角的纵坐标
+		// 使用window.open()方法创建子窗口
+		const popup = window.open("", "PopupWindow", `width=${width}, height=${height}, left=${left}, top=${top}`);
+		popup.document.body.innerHTML = "";
+		popup.document.write("<strong>Backtrace:</strong><ul>");
+		// 渲染传递的数据 //"<br><strong>Directory:</strong> " + trace.directory 
+		d.Backtrace.forEach(function (trace) {
+			popup.document.write("<li><strong>ID:</strong> " + trace.id + "<br><strong>Address:</strong> " + trace.address + "<br><strong>Directory:</strong> " + trace.directory + "<br><strong>Function:</strong> " + trace.function + "</li><br>");
+		});
+		popup.document.write("</ul>");
+		return popup;
+	}
+
+	document.addEventListener("contextmenu", function (event) {
+		event.preventDefault(); // 阻止默认上下文菜单
+		if(lastElement){
+			lastElement.style.fill = originColor; // 恢复原始背景颜色
+		}
+		const targetElement = event.target; // 获取鼠标右键点击的对象
+		// 获取计算后的样式
+		const computedStyle = window.getComputedStyle(targetElement);
+		originColor = computedStyle.getPropertyValue('fill');
+		var data = d3.select(targetElement).data()[0];
+		if (data.Backtrace.length > 0) {
+			targetElement.style.fill = "orange"; // 将target对象的背景颜色设置为黄色
+			const popup = createPopupWindow(event.clientX, event.clientY, data);
+			lastElement = targetElement;
+			popup.addEventListener("beforeunload", function () {
+				targetElement.style.fill = originColor; // 恢复原始背景颜色
+				lastElement = null;
+			});
+		}
+	});
+
+    const dropdownBtn = document.getElementById("dropdownBtn");
+    const myPopup = document.getElementById("myPopup");
+    const closeBtn = document.getElementById("closeBtn");
+
+    dropdownBtn.addEventListener("click", function () {
+        myPopup.style.display = "block";
+    });
+
+    closeBtn.addEventListener("click", function () {
+        myPopup.style.display = "none";
+    });
+
+	// Function to handle file input change
+	function handleFileInput(event) {
+		try {
+			// Show the loading animation
+			document.getElementById('loading-container').style.display = 'block';
+			const jsonData = data; // Use the data variable defined in your HTML
+			// Rest of your code remains the same
+			const yScale = d3.scaleLinear()
+				.domain([0, d3.max(jsonData[0].data, d => d.Size)])
+				.range([700, 0]);
+
+			const yAxis = d3.axisLeft(yScale)
+				.ticks(14)
+				.tickFormat((d) => {
+					const hexValue = jsonData[jsonData.length - 1].data[0].Address
+					const hexToDecimal = parseInt(hexValue, 16);
+					const result = hexToDecimal + d;
+					const resultInHex = result.toString(16);
+					return "0x" + resultInHex;
+				});
+
+			const yAxisGroup = d3.select('.y-axis-container .y-axis')
+				.call(yAxis)
+				.attr('transform', `translate(20, 0)`);
+
+			yAxisGroup.selectAll("text")
+				.attr("x", 75);
+
+			start = jsonData[0].time;
+			var maxFragment = 0;
+			// Iterate through each dataset and create a chart
+			jsonData.forEach((data, index) => {
+				const container = d3.select("#charts-container")
+					.append("div")
+					.attr("class", "chart")
+					.attr("id", "chart-" + index);
+				maxFragment = Math.max(maxFragment, data.fragment);
+				updateChart(data.data, container, data.time);
+			});
+
+			// Render the bar chart
+			renderChart(jsonData);
+
+			// Rest of your code remains the same
+			const maxFragmentElement = document.getElementById("maxFragment");
+			maxFragmentElement.textContent = "内部碎片最大为: " + (maxFragment / 1024).toFixed(2) + "KB";
+
+			// Hide the loading animation immediately after data is processed
+			document.getElementById('loading-container').style.display = 'none';
+			document.getElementById('content').style.display = 'block';
+		} catch (error) {
+			console.error("Error parsing JSON:", error);
+		}
+	}
+	// Add an event listener to the window for the page load event
+	window.addEventListener("load", handleFileInput);
+
+	// begin trace data
+	const data =
