@@ -177,3 +177,8 @@ optional arguments:
 ```
 
 比如可执行`python3 word_statistics.py --csv_file checkleak_23227_1678176607.csv --print_count  20`   来观察词语出现频率最高前20名的统计
+
+
+## 可视化功能
+
+  未来打算采用火焰图的方式显示
