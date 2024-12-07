@@ -5,6 +5,9 @@
 #include <unistd.h>
 
 #include <android-base/stringprintf.h>
+#include <functional>
+#include <unordered_map>
+#include <utility>
 
 #include "Config.h"
 #include "DebugData.h"
@@ -13,6 +16,9 @@
 #include "malloc_debug.h"
 
 #include "memory_hook.h"
+
+#include "ioctl_def/ion.h"
+#include "ioctl_def/ion_4.19.h"
 
 class ScopedConcurrentLock {
 public:
@@ -253,25 +259,35 @@ int debug_posix_memalign(void** memptr, size_t alignment, size_t size) {
     return (*memptr != nullptr) ? 0 : ENOMEM;
 }
 
+namespace IoctlArgParser  {
+std::pair<__u32, __u64> dma_heap_ioctl_alloc_parse(void* arg) {
+    struct dma_heap_allocation_data* heap_data = (struct dma_heap_allocation_data*)arg;
+    return {heap_data->fd, heap_data->len};
+}
+
+std::pair<__u32, __u64> ion_ioc_new_alloc_parse(void* arg) {
+    struct ion_new_allocation_data* heap_data = (struct ion_new_allocation_data*)arg;
+    return {heap_data->fd, heap_data->len};
+}
+}
+
 int debug_ioctl(int fd, unsigned int request, void* arg) {
-    if (DebugCallsDisabled() || request != DMA_HEAP_IOCTL_ALLOC) {
+    if (DebugCallsDisabled()) {
         return m_sys_ioctl(fd, request, arg);
     }
 
     ScopedConcurrentLock lock;
     ScopedDisableDebugCalls disable;
-
-    struct dma_heap_allocation_data* heap_data = (struct dma_heap_allocation_data*)arg;
-    if (heap_data->len > PointerInfoType::MaxSize()) {
-        errno = ENOMEM;
-        return -1;
-    }
-
+    static std::unordered_map<unsigned int, std::function<std::pair<__u32, __u64>(void* arg)>> parse_arg = {
+        {ION_IOC_NEW_ALLOC, IoctlArgParser::ion_ioc_new_alloc_parse},
+        {DMA_HEAP_IOCTL_ALLOC, IoctlArgParser::dma_heap_ioctl_alloc_parse},
+    };
     int ret = m_sys_ioctl(fd, request, arg);
-    if (g_debug->TrackPointers()) {
-        g_debug->pointer->AddDMA(heap_data->fd, heap_data->len);
+    auto iter = parse_arg.find(request);
+    if (iter != parse_arg.end() && g_debug->TrackPointers()) {
+        auto parsers = iter->second(arg);
+        g_debug->pointer->AddDMA(parsers.first, parsers.second);
     }
-
     return ret;
 }
 
