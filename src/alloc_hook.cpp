@@ -40,6 +40,9 @@ public:
     void* mmap(void* addr, size_t size, int prot, int flags, int fd, off_t offset) {
         return debug_mmap(addr, size, prot, flags, fd, offset);
     }
+    void* mmap64(void* addr, size_t size, int prot, int flags, int fd, off_t offset) {
+        return debug_mmap64(addr, size, prot, flags, fd, offset);
+    }
     int munmap(void* addr, size_t size) { return debug_munmap(addr, size); }
 
     void checkpoint(const char* file_name) { return debug_dump_heap(file_name); }

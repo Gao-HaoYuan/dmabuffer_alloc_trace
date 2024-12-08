@@ -78,15 +78,15 @@ void PointerData::Add(uintptr_t ptr, size_t pointer_size, MemType type) {
     }
 }
 
-void PointerData::AddHost(const void* ptr, size_t pointer_size, MemType type) {
+void PointerData::AddPointer(const void* ptr, size_t pointer_size, MemType type) {
     Add(reinterpret_cast<uintptr_t>(ptr), pointer_size, type);
 }
 
-void PointerData::AddDMA(const uint32_t ptr, size_t pointer_size, MemType type) {
+void PointerData::AddFd(const uint32_t ptr, size_t pointer_size, MemType type) {
     Add(static_cast<uintptr_t>(ptr), pointer_size, type);
 }
 
-void PointerData::Remove(uintptr_t ptr, bool is_dma) {
+void PointerData::Remove(uintptr_t ptr) {
     size_t hash_index;
     {
         std::lock_guard<std::mutex> pointer_guard(pointer_mutex_);
@@ -97,7 +97,7 @@ void PointerData::Remove(uintptr_t ptr, bool is_dma) {
             return;
         }
         current_used -= entry->second.size;
-        size_t* target = is_dma ? &current_dma : &current_host;
+        size_t* target = (entry->second.mem_type == DMA) ? &current_dma : &current_host;
         *target -= entry->second.size;
         hash_index = entry->second.hash_index;
         pointers_.erase(mangled_ptr);
@@ -106,12 +106,12 @@ void PointerData::Remove(uintptr_t ptr, bool is_dma) {
     RemoveBacktrace(hash_index);
 }
 
-void PointerData::RemoveHost(const void* ptr) {
-    Remove(reinterpret_cast<uintptr_t>(ptr), false);
+void PointerData::RemovePointer(const void* ptr) {
+    Remove(reinterpret_cast<uintptr_t>(ptr));
 }
 
-void PointerData::RemoveDMA(const uint32_t ptr) {
-    Remove(static_cast<uintptr_t>(ptr), true);
+void PointerData::RemoveFd(const uint32_t ptr) {
+    Remove(static_cast<uintptr_t>(ptr));
 }
 
 void PointerData::RemoveBacktrace(size_t hash_index) {
@@ -353,6 +353,6 @@ void PointerData::DumpPeakInfo() {
     std::lock_guard<std::mutex> pointer_guard(pointer_mutex_);
     printf("\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
            "++++++++++++++++\n");
-    printf("host peak used: %zuMB, dma peak used %zuMB, total peak used: %zuMB\n\n",
-           peak_host / 1024 / 1024, peak_dma / 1024 / 1024, peak_tot / 1024 / 1024);
+    printf("host peak used: %fMB, dma peak used %fMB, total peak used: %fMB\n\n",
+           peak_host / 1024.0 / 1024.0 , peak_dma / 1024.0 / 1024.0, peak_tot / 1024.0 / 1024.0);
 }
