@@ -8,6 +8,7 @@ global:
     realloc;
     posix_memalign;
     mmap;
+    mmap64;
     munmap;
     checkpoint;
 

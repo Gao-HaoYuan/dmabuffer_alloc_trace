@@ -6,6 +6,7 @@
 
 #include <android-base/stringprintf.h>
 #include <functional>
+#include <set>
 #include <unordered_map>
 #include <utility>
 
@@ -19,6 +20,10 @@
 
 #include "ioctl_def/ion.h"
 #include "ioctl_def/ion_4.19.h"
+
+
+#define QCOM_IOCTL_FD           5
+#define MTK_IOCTL_FD            3
 
 class ScopedConcurrentLock {
 public:
@@ -125,7 +130,7 @@ void debug_dump_heap(const char* file_name) {
 static void* InternalMalloc(size_t size) {
     void* result = m_sys_malloc(size);
     if (g_debug->TrackPointers()) {
-        g_debug->pointer->AddHost(result, size);
+        g_debug->pointer->AddPointer(result, size);
     }
 
     return result;
@@ -133,7 +138,7 @@ static void* InternalMalloc(size_t size) {
 
 static void InternalFree(void* pointer) {
     if (g_debug->TrackPointers()) {
-        g_debug->pointer->RemoveHost(pointer);
+        g_debug->pointer->RemovePointer(pointer);
     }
     m_sys_free(pointer);
 }
@@ -188,13 +193,13 @@ void* debug_realloc(void* pointer, size_t bytes) {
     }
 
     if (g_debug->TrackPointers()) {
-        g_debug->pointer->RemoveHost(pointer);
+        g_debug->pointer->RemovePointer(pointer);
     }
 
     void* new_pointer = m_sys_realloc(pointer, bytes);
 
     if (g_debug->TrackPointers()) {
-        g_debug->pointer->AddHost(new_pointer, bytes);
+        g_debug->pointer->AddPointer(new_pointer, bytes);
     }
 
     return new_pointer;
@@ -217,7 +222,7 @@ void* debug_calloc(size_t nmemb, size_t bytes) {
 
     void* pointer = m_sys_calloc(1, size);
     if (pointer != nullptr && g_debug->TrackPointers()) {
-        g_debug->pointer->AddHost(pointer, size);
+        g_debug->pointer->AddPointer(pointer, size);
     }
 
     return pointer;
@@ -239,7 +244,7 @@ void* debug_memalign(size_t alignment, size_t bytes) {
     void* pointer = m_sys_memalign(alignment, bytes);
 
     if (pointer != nullptr && g_debug->TrackPointers()) {
-        g_debug->pointer->AddHost(pointer, bytes);
+        g_debug->pointer->AddPointer(pointer, bytes);
     }
 
     return pointer;
@@ -286,7 +291,7 @@ int debug_ioctl(int fd, unsigned int request, void* arg) {
     auto iter = parse_arg.find(request);
     if (iter != parse_arg.end() && g_debug->TrackPointers()) {
         auto parsers = iter->second(arg);
-        g_debug->pointer->AddDMA(parsers.first, parsers.second);
+        g_debug->pointer->AddFd(parsers.first, parsers.second);
     }
     return ret;
 }
@@ -300,7 +305,7 @@ int debug_close(int fd) {
     ScopedDisableDebugCalls disable;
 
     if (g_debug->TrackPointers()) {
-        g_debug->pointer->RemoveDMA(fd);
+        g_debug->pointer->RemoveFd(fd);
     }
 
     return m_sys_close(fd);
@@ -321,7 +326,30 @@ void* debug_mmap(void* addr, size_t size, int prot, int flags, int fd, off_t off
 
     void* result = m_sys_mmap(addr, size, prot, flags, fd, offset);
     if (g_debug->TrackPointers()) {
-        g_debug->pointer->AddHost(result, size, MMAP);
+        g_debug->pointer->AddPointer(result, size, MMAP);
+    }
+
+    return result;
+}
+
+void* debug_mmap64(void* addr, size_t size, int prot, int flags, int fd, off_t offset) {
+    if (DebugCallsDisabled() || addr != nullptr) {
+        return m_sys_mmap64(addr, size, prot, flags, fd, offset);
+    }
+
+    ScopedConcurrentLock lock;
+    ScopedDisableDebugCalls disable;
+
+    if (size > PointerInfoType::MaxSize()) {
+        errno = ENOMEM;
+        return nullptr;
+    }
+
+    static std::set<__u32> dma_fd_set = {QCOM_IOCTL_FD, MTK_IOCTL_FD };
+
+    void* result = m_sys_mmap64(addr, size, prot, flags, fd, offset);
+    if (g_debug->TrackPointers() && dma_fd_set.count(fd)) {
+        g_debug->pointer->AddPointer(result, size, DMA);
     }
 
     return result;
@@ -336,7 +364,7 @@ int debug_munmap(void* addr, size_t size) {
     ScopedDisableDebugCalls disable;
 
     if (g_debug->TrackPointers()) {
-        g_debug->pointer->RemoveHost(addr);
+        g_debug->pointer->RemovePointer(addr);
     }
 
     return m_sys_munmap(addr, size);

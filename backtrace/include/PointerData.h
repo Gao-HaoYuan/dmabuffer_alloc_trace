@@ -94,11 +94,11 @@ public:
     void RemoveBacktrace(size_t hash_index);
 
     void Add(uintptr_t pointer, size_t size, MemType type);
-    void AddHost(const void* ptr, size_t pointer_size, MemType type = HOST);
-    void AddDMA(const uint32_t ptr, size_t pointer_size, MemType type = DMA);
-    void Remove(uintptr_t pointer, bool is_dma);
-    void RemoveHost(const void* ptr);
-    void RemoveDMA(const uint32_t ptr);
+    void AddPointer(const void* ptr, size_t pointer_size, MemType type = HOST);
+    void AddFd(const uint32_t ptr, size_t pointer_size, MemType type = DMA);
+    void Remove(uintptr_t pointer);
+    void RemovePointer(const void* ptr);
+    void RemoveFd(const uint32_t ptr);
 
     void DumpLiveToFile(int fd);
     void DumpPeakInfo();

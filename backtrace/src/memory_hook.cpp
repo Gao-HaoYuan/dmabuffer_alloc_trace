@@ -14,6 +14,8 @@ int (*m_sys_ioctl)(int fd, unsigned int request, ...) = nullptr;
 int (*m_sys_close)(int fd) = nullptr;
 void* (*m_sys_mmap)(
         void* addr, size_t size, int prot, int flags, int fd, off_t offset) = nullptr;
+void* (*m_sys_mmap64)(
+        void* addr, size_t size, int prot, int flags, int fd, off_t offset) = nullptr;
 int (*m_sys_munmap)(void* addr, size_t size) = nullptr;
 
 
@@ -44,6 +46,7 @@ void init_hook() {
         RESOLVE(ioctl);
         RESOLVE(close);
         RESOLVE(mmap);
+        RESOLVE(mmap64);
         RESOLVE(munmap);
 #undef RESOLVE
 }
