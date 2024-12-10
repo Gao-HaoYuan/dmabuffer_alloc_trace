@@ -7,6 +7,7 @@
 #include <android-base/stringprintf.h>
 #include <functional>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "Config.h"
@@ -40,6 +41,34 @@ private:
     static pthread_rwlock_t lock_;
 };
 pthread_rwlock_t ScopedConcurrentLock::lock_;
+
+class FdManager {
+public:
+    static bool checkAndInsert(int fd) {
+        if (fd < 0)
+            return false;
+
+        if (fd_set_.count(fd))
+            return false;
+
+        fd_set_.insert(fd);
+        return true;
+    }
+
+    static bool checkAndremove(int fd) {
+        if (fd_set_.count(fd)) {
+            fd_set_.erase(fd);
+            return true;
+        }
+        return false;
+    }
+
+    static bool exists(int fd) { return fd_set_.count(fd); }
+
+private:
+    static std::unordered_set<int> fd_set_;
+};
+std::unordered_set<int> FdManager::fd_set_;
 
 DebugData* g_debug;
 
@@ -286,20 +315,22 @@ int debug_ioctl(int fd, unsigned int request, void* arg) {
     auto iter = parse_arg.find(request);
     if (iter != parse_arg.end() && g_debug->TrackPointers()) {
         auto parsers = iter->second(arg);
-        g_debug->pointer->AddFd(parsers.first, parsers.second);
+        if (FdManager::checkAndInsert(parsers.first)) {
+            g_debug->pointer->AddFd(parsers.first, parsers.second);
+        }
     }
     return ret;
 }
 
 int debug_close(int fd) {
-    if (DebugCallsDisabled() || fd <= 0) {
+    if (DebugCallsDisabled() || fd < 0) {
         return m_sys_close(fd);
     }
 
     ScopedConcurrentLock lock;
     ScopedDisableDebugCalls disable;
 
-    if (g_debug->TrackPointers()) {
+    if (g_debug->TrackPointers() && FdManager::checkAndremove(fd)) {
         g_debug->pointer->RemoveFd(fd);
     }
 
@@ -307,7 +338,7 @@ int debug_close(int fd) {
 }
 
 void* debug_mmap(void* addr, size_t size, int prot, int flags, int fd, off_t offset) {
-    if (DebugCallsDisabled() || addr != nullptr) {
+    if (DebugCallsDisabled() || addr != nullptr || FdManager::exists(fd)) {
         return m_sys_mmap(addr, size, prot, flags, fd, offset);
     }
 
