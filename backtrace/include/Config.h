@@ -8,6 +8,7 @@ constexpr uint64_t TRACK_ALLOCS = 0x2;              // 记录内存申请动作
 constexpr uint64_t BACKTRACE_SPECIFIC_SIZES = 0x4;  // 记录特定大小的内存申请
 constexpr uint64_t RECORD_MEMORY_PEAK = 0x8;        // 记录内存峰值
 constexpr uint64_t DUMP_ON_SINGAL = 0x80;           // 记录内存峰值
+constexpr uint64_t BACKTRACE_FULL = 0X800;          // 采用 unwind 方式查询堆栈
 
 class Config {
 public:

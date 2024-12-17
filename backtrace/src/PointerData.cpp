@@ -11,6 +11,7 @@
 #include "Config.h"
 #include "DebugData.h"
 #include "PointerData.h"
+#include "backtrace.h"
 #include "UnwindBacktrace.h"
 
 #include "android-base/stringprintf.h"
@@ -86,7 +87,7 @@ size_t PointerData::AddBacktrace(size_t num_frames, size_t size_bytes) {
 
     std::vector<uintptr_t> frames;
     std::vector<unwindstack::FrameData> frames_info;
-    if (g_debug->config().options() & BACKTRACE) {
+    if (g_debug->config().options() & BACKTRACE_FULL) {
         switch (Unwind(&frames, &frames_info, num_frames)) {
             case unwindstack::ERROR_NONE:
             case unwindstack::ERROR_MAX_FRAMES_EXCEEDED:
@@ -97,7 +98,12 @@ size_t PointerData::AddBacktrace(size_t num_frames, size_t size_bytes) {
                 return kBacktraceEmptyIndex;
         }
     } else {
-        return kBacktraceEmptyIndex;
+        frames.resize(num_frames);
+        num_frames = backtrace_get(frames.data(), frames.size());
+        if (num_frames == 0) {
+            return kBacktraceEmptyIndex;
+        }
+        frames.resize(num_frames);
     }
 
     FrameKeyType key{.num_frames = frames.size(), .frames = frames.data()};
@@ -112,7 +118,7 @@ size_t PointerData::AddBacktrace(size_t num_frames, size_t size_bytes) {
         frames_.emplace(
                 hash_index,
                 FrameInfoType{.references = 1, .frames = std::move(frames)});
-        if (g_debug->config().options() & BACKTRACE) {
+        if (g_debug->config().options() & BACKTRACE_FULL) {
             backtraces_info_.emplace(
                     hash_index,
                     std::make_shared<std::vector<unwindstack::FrameData>>(frames_info));
@@ -163,7 +169,7 @@ void PointerData::RemoveBacktrace(size_t hash_index) {
                 .frames = frame_info->frames.data()};
         key_to_index_.erase(key);
         frames_.erase(hash_index);
-        if (g_debug->config().options() & BACKTRACE) {
+        if (g_debug->config().options() & BACKTRACE_FULL) {
             backtraces_info_.erase(hash_index);
         }
     }
@@ -190,7 +196,7 @@ void PointerData::GetList(
                 frame_info = &frame_entry->second;
             }
 
-            if (g_debug->config().options() & BACKTRACE) {
+            if (g_debug->config().options() & BACKTRACE_FULL) {
                 auto backtrace_entry = backtraces_info_.find(hash_index);
                 if (backtrace_entry == backtraces_info_.end()) {
                     // Pointer --> hash_index does not exist.
@@ -296,39 +302,42 @@ void PointerData::DumpLiveToFile(int fd) {
                 "alloc_time:%s.%zu\n",
                 info.size / 1024.0, mtype[info.mem_type], info.num_allocations,
                 formatted_time, info.alloc_time.tv_usec / 1000);
-        for (size_t i = 0; i < info.backtrace_info->size(); ++i) {
-            const unwindstack::FrameData* frame = &info.backtrace_info->at(i);
-            auto map_info = frame->map_info;
-
-            std::string line =
-                    android::base::StringPrintf("#%0zd %" PRIx64 " ", i, frame->rel_pc);
-            // so path
-            if (map_info == nullptr) {
-                line += "<unknown>";
-            } else if (map_info->name().empty()) {
-                line += android::base::StringPrintf(
-                        "<anonymous:%" PRIx64 ">", map_info->start());
-            } else {
-                line += map_info->name();
-            }
-
-            if (!frame->function_name.empty()) {
-                line += " (";
-                char* demangled_name = abi::__cxa_demangle(
-                        frame->function_name.c_str(), nullptr, nullptr, nullptr);
-                if (demangled_name != nullptr) {
-                    line += demangled_name;
-                    free(demangled_name);
-                } else {
-                    line += frame->function_name;
-                }
-                if (frame->function_offset != 0) {
-                    line += "+" + std::to_string(frame->function_offset);
-                }
-                line += ")";
-            }
-            dprintf(fd, "%s\n", line.c_str());
+        if ((g_debug->config().options() & BACKTRACE_FULL) == 0) {
+            dump_backtrace(fd, info.frame_info->frames.data(), info.frame_info->frames.size());
         }
+        // for (size_t i = 0; i < info.backtrace_info->size(); ++i) {
+        //     const unwindstack::FrameData* frame = &info.backtrace_info->at(i);
+        //     auto map_info = frame->map_info;
+
+        //     std::string line =
+        //             android::base::StringPrintf("#%0zd %" PRIx64 " ", i, frame->rel_pc);
+        //     // so path
+        //     if (map_info == nullptr) {
+        //         line += "<unknown>";
+        //     } else if (map_info->name().empty()) {
+        //         line += android::base::StringPrintf(
+        //                 "<anonymous:%" PRIx64 ">", map_info->start());
+        //     } else {
+        //         line += map_info->name();
+        //     }
+
+        //     if (!frame->function_name.empty()) {
+        //         line += " (";
+        //         char* demangled_name = abi::__cxa_demangle(
+        //                 frame->function_name.c_str(), nullptr, nullptr, nullptr);
+        //         if (demangled_name != nullptr) {
+        //             line += demangled_name;
+        //             free(demangled_name);
+        //         } else {
+        //             line += frame->function_name;
+        //         }
+        //         if (frame->function_offset != 0) {
+        //             line += "+" + std::to_string(frame->function_offset);
+        //         }
+        //         line += ")";
+        //     }
+        //     dprintf(fd, "%s\n", line.c_str());
+        // }
         dprintf(fd, "\n");
     }
 }

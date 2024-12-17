@@ -5,3 +5,6 @@ target_include_directories(helper PUBLIC
                             ${CMAKE_CURRENT_SOURCE_DIR}/include
                         )
 target_link_libraries(helper unwindstack)
+if (CMAKE_CXX_COMPILER_ID STREQUAL Clang)
+    target_compile_options(helper PRIVATE -fno-c++-static-destructors)
+endif ()

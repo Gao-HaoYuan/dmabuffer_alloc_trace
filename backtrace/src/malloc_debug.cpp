@@ -13,6 +13,7 @@
 #include "Config.h"
 #include "DebugData.h"
 #include "PointerData.h"
+#include "backtrace.h"
 #include "debug_disable.h"
 #include "malloc_debug.h"
 
@@ -61,6 +62,9 @@ bool debug_initialize(void* init_space[]) {
         return false;
     }
     g_debug = debug;
+    // Always enable the backtrace code since we will use it in a number
+    // of different error cases.
+    backtrace_startup();
 
     ScopedConcurrentLock::Init();
 
@@ -101,6 +105,8 @@ void debug_finalize() {
     if (g_debug->TrackPointers()) {
         g_debug->pointer->DumpPeakInfo();
     }
+
+    backtrace_shutdown();
 
     // 对于调试工具或在调试模式下运行的代码, 资源管理可能不是首要关注点.
     // 为了避免在清理过程中出现多线程访问冲突, 决定故意不释放这些资源. 包括
