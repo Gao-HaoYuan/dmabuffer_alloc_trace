@@ -172,38 +172,17 @@ void PointerData::RemoveBacktrace(size_t hash_index) {
 void PointerData::GetList(
         std::vector<ListInfoType>* list, bool only_with_backtrace, Pred pred) {
     for (auto& entry : pointers_) {
-        FrameInfoType* frame_info = nullptr;
-        std::shared_ptr<std::vector<unwindstack::FrameData>> backtrace_info;
-        uintptr_t pointer = DemanglePointer(entry.first);
-        size_t hash_index = entry.second.hash_index;
-        if (hash_index > kBacktraceEmptyIndex) {
-            auto frame_entry = frames_.find(hash_index);
-            if (frame_entry == frames_.end()) {
-                // Somehow wound up with a pointer with a valid hash_index, but
-                // no frame data. This should not be possible since adding a pointer
-                // occurs after the hash_index and frame data have been added.
-                // When removing a pointer, the pointer is deleted before the frame
-                // data.
-
-                // Pointer --> hash_index does not exist.
-            } else {
-                frame_info = &frame_entry->second;
-            }
-
-            if (g_debug->config().options() & BACKTRACE) {
-                auto backtrace_entry = backtraces_info_.find(hash_index);
-                if (backtrace_entry == backtraces_info_.end()) {
-                    // Pointer --> hash_index does not exist.
-                } else {
-                    backtrace_info = backtrace_entry->second;
-                }
-            }
-        }
-
         // 舍弃没有堆栈的 pointer
-        if (hash_index <= 1 && only_with_backtrace) {
+        size_t hash_index = entry.second.hash_index;
+        if (hash_index <= kBacktraceEmptyIndex && only_with_backtrace) {
             continue;
         }
+
+        uintptr_t pointer = DemanglePointer(entry.first);
+        auto frame_entry = frames_.find(hash_index);
+        FrameInfoType* frame_info = &frame_entry->second;
+        auto backtrace_entry = backtraces_info_.find(hash_index);
+        std::shared_ptr<std::vector<unwindstack::FrameData>> backtrace_info = backtrace_entry->second;
 
         list->emplace_back(ListInfoType{
                 pointer, 1, entry.second.RealSize(), entry.second.mem_type, frame_info,
