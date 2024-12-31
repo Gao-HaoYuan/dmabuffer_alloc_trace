@@ -66,6 +66,8 @@ bool Config::Init() {
         }
         backtrace_dump_on_exit_ = true;
     }
+    // 单位是 MB
+    backtrace_dump_peak_val_ *= 1024 * 1024;
 
     // 通过信号插入 check point
     options_ |= DUMP_ON_SINGAL;
